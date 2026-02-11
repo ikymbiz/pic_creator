@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unified AI Image Generator (v2)</title>
+    <title>Unified AI Image Generator (v3)</title>
     <style>
         :root {
             --bg-color: #1a1a1a;
@@ -13,6 +13,8 @@
             --accent-hover: #357abd;
             --input-bg: #3d3d3d;
             --border-color: #555;
+            --error-color: #ff6b6b;
+            --success-color: #4caf50;
         }
 
         body {
@@ -58,7 +60,7 @@
         }
         .settings-content.open { display: block; }
 
-        .input-group { margin-bottom: 10px; }
+        .input-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #ccc; }
         input[type="password"], input[type="text"], select, textarea {
             width: 100%;
@@ -69,6 +71,30 @@
             color: white;
             box-sizing: border-box;
         }
+
+        /* ボタン類 */
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: background 0.3s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover { background-color: var(--accent-hover); }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        
+        .btn-secondary {
+            background-color: #666;
+            font-size: 0.9rem;
+            padding: 8px;
+        }
+        .btn-secondary:hover { background-color: #777; }
 
         /* メイン操作エリア */
         .control-panel {
@@ -84,20 +110,6 @@
             font-size: 0.9rem;
         }
 
-        button {
-            background-color: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 1rem;
-            transition: background 0.3s;
-        }
-        button:hover { background-color: var(--accent-hover); }
-        button:disabled { background-color: #555; cursor: not-allowed; }
-
         /* 結果表示エリア */
         #status-log {
             margin-top: 20px;
@@ -109,6 +121,7 @@
             min-height: 40px;
             white-space: pre-wrap;
             font-size: 0.85rem;
+            overflow-x: auto;
         }
 
         #result-area {
@@ -121,6 +134,9 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             display: none;
         }
+        
+        .error-msg { color: var(--error-color) !important; }
+        .success-msg { color: var(--success-color) !important; }
     </style>
 </head>
 <body>
@@ -130,7 +146,7 @@
 
     <div class="settings-box">
         <div class="settings-header" onclick="toggleSettings()">
-            <span>⚙️ API Key Settings (Click to Open)</span>
+            <span>⚙️ API Key Settings & Debug</span>
             <span>▼</span>
         </div>
         <div class="settings-content" id="settings-content">
@@ -141,13 +157,13 @@
             <div class="input-group">
                 <label>Google API Key (Gemini/Imagen)</label>
                 <input type="password" id="google-key" placeholder="AIza...">
-                <small style="color:#aaa;">※AI Studioのキーを使用してください (Vertex AIではありません)</small>
+                <button class="btn-secondary" onclick="checkGoogleModels()">🔍 Check Available Google Models</button>
             </div>
             <div class="input-group">
                 <label>xAI API Key (Grok)</label>
                 <input type="password" id="xai-key" placeholder="xai-...">
             </div>
-            <button onclick="saveKeys()" style="background-color: #4caf50;">Save Keys locally</button>
+            <button onclick="saveKeys()" style="background-color: var(--success-color);">Save Keys locally</button>
         </div>
     </div>
 
@@ -198,13 +214,58 @@
         localStorage.setItem('openai_key', document.getElementById('openai-key').value);
         localStorage.setItem('google_key', document.getElementById('google-key').value);
         localStorage.setItem('xai_key', document.getElementById('xai-key').value);
-        log("API Keys saved to Local Storage.");
-        toggleSettings();
+        log("API Keys saved to Local Storage.", "success-msg");
+        // 設定画面を閉じる
+        document.getElementById('settings-content').classList.remove('open');
     }
 
-    function log(msg) {
+    function log(msg, className = "") {
         const logArea = document.getElementById('status-log');
-        logArea.textContent = msg;
+        logArea.innerHTML = `<span class="${className}">${msg}</span>`;
+        console.log(msg);
+    }
+
+    // --- Googleモデル確認機能 ---
+    async function checkGoogleModels() {
+        const apiKey = document.getElementById('google-key').value;
+        if (!apiKey) {
+            log("Error: Please enter Google API Key first.", "error-msg");
+            return;
+        }
+        
+        log("Checking available Google models...", "");
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+            const data = await res.json();
+            
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+            
+            let foundImagen = false;
+            let msg = "--- Available Models ---\n";
+            
+            // 取得できたモデル一覧を表示
+            data.models.forEach(m => {
+                // 画像生成やテキスト生成に関連するものだけピックアップ
+                if(m.name.includes("gemini") || m.name.includes("imagen")) {
+                    msg += `• ${m.name.replace("models/", "")}\n`;
+                    if (m.name.includes("imagen")) foundImagen = true;
+                }
+            });
+            
+            msg += "\n------------------------\n";
+            if (foundImagen) {
+                msg += "✅ 'imagen' model found! You can generate images.";
+                log(msg, "success-msg");
+            } else {
+                msg += "⚠️ 'imagen' model NOT found.\nYour API key does not have access to image generation yet.\nPlease use OpenAI or Grok instead.";
+                log(msg, "error-msg");
+            }
+
+        } catch (e) {
+            log(`Error checking models: ${e.message}`, "error-msg");
+        }
     }
 
     // --- メイン処理 ---
@@ -222,14 +283,14 @@
         const useEnhance = document.getElementById('enhance-toggle').checked;
 
         if (!prompt) {
-            log("Error: Please enter a prompt.");
+            log("Error: Please enter a prompt.", "error-msg");
             btn.disabled = false;
             return;
         }
 
         const apiKey = getApiKey(provider);
         if (!apiKey) {
-            log(`Error: API Key for ${provider} is missing. Please check settings.`);
+            log(`Error: API Key for ${provider} is missing. Please check settings.`, "error-msg");
             btn.disabled = false;
             return;
         }
@@ -244,19 +305,20 @@
                     finalPrompt = await enhancePrompt(provider, apiKey, prompt);
                     log(`✨ Enhanced Prompt: ${finalPrompt}`);
                 } catch (e) {
-                    log(`⚠️ Prompt enhancement failed: ${e.message}. Using original prompt.`);
-                    finalPrompt = prompt; // エラーなら元のプロンプトを使う
+                    log(`⚠️ Prompt enhancement failed: ${e.message}. Using original prompt.`, "error-msg");
+                    finalPrompt = prompt;
                 }
             }
 
             // 2. 画像生成フェーズ
-            log(`[${provider}] Generating image... (This may take a while)`);
+            log(`[${provider}] Generating image...`);
             const imageUrl = await generateImage(provider, apiKey, finalPrompt);
 
             // 3. 表示
             img.src = imageUrl;
             img.style.display = 'block';
             
+            // ダウンロードリンク
             try {
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
@@ -269,11 +331,10 @@
                 downloadLink.style.display = 'inline-block';
             }
 
-            log("Success! Image generated.");
+            log("Success! Image generated.", "success-msg");
 
         } catch (error) {
-            log(`Error: ${error.message}`);
-            console.error(error);
+            log(`Error: ${error.message}`, "error-msg");
         } finally {
             btn.disabled = false;
         }
@@ -288,7 +349,6 @@
 
     // --- API呼び出しロジック ---
 
-    // 1. プロンプト強化 (Text Generation)
     async function enhancePrompt(provider, apiKey, rawPrompt) {
         const systemMsg = "You are an expert image prompt generator. Expand the user's input into a detailed, descriptive English prompt (max 3 sentences). Output ONLY the prompt.";
         
@@ -315,29 +375,41 @@
             return data.choices[0].message.content;
 
         } else if (provider === 'gemini') {
-            // ★変更点: モデル名を gemini-1.5-flash-001 に変更し、失敗時は gemini-pro を試すロジックは複雑になるため
-            // まずは安全な -001 を指定します。
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`;
+            // プロンプト生成には汎用的なGemini Pro系を使用
+            // gemini-1.5-flash または gemini-pro を試行
+            let model = "gemini-1.5-flash-001";
+            let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
             
-            const res = await fetch(url, {
+            let res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: `${systemMsg}\nUser Input: ${rawPrompt}` }] }]
                 })
             });
-            const data = await res.json();
+            let data = await res.json();
             
+            // Flashで失敗したらProを試す（再試行ロジック）
             if (data.error) {
-                // エラー内容をそのままthrowして、呼び出し元のcatchブロックで処理させる
-                throw new Error(data.error.message);
+                console.warn("Flash model failed, trying Pro model...");
+                model = "gemini-pro";
+                url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: `${systemMsg}\nUser Input: ${rawPrompt}` }] }]
+                    })
+                });
+                data = await res.json();
             }
+
+            if (data.error) throw new Error(data.error.message);
             return data.candidates[0].content.parts[0].text;
         }
         return rawPrompt;
     }
 
-    // 2. 画像生成 (Image Generation)
     async function generateImage(provider, apiKey, prompt) {
         if (provider === 'openai' || provider === 'grok') {
             const baseUrl = provider === 'grok' ? 'https://api.x.ai/v1' : 'https://api.openai.com/v1';
@@ -366,7 +438,7 @@
 
         } else if (provider === 'gemini') {
             // Imagen 3 endpoint
-            // ★変更点: モデルIDを最新のものに明示的に指定
+            // 注意: エラーが出る場合はここで指定しているモデルIDがアカウントに許可されていません
             const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
             
             const res = await fetch(url, {
