@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unified AI Image Generator</title>
+    <title>Unified AI Image Generator (v2)</title>
     <style>
         :root {
             --bg-color: #1a1a1a;
@@ -141,6 +141,7 @@
             <div class="input-group">
                 <label>Google API Key (Gemini/Imagen)</label>
                 <input type="password" id="google-key" placeholder="AIza...">
+                <small style="color:#aaa;">※AI Studioのキーを使用してください (Vertex AIではありません)</small>
             </div>
             <div class="input-group">
                 <label>xAI API Key (Grok)</label>
@@ -154,8 +155,8 @@
         <div class="input-group">
             <label>Provider</label>
             <select id="provider-select">
-                <option value="openai">OpenAI (DALL-E 3)</option>
                 <option value="gemini">Google (Imagen 3)</option>
+                <option value="openai">OpenAI (DALL-E 3)</option>
                 <option value="grok">xAI (Grok-2)</option>
             </select>
         </div>
@@ -239,8 +240,13 @@
             // 1. プロンプト強化フェーズ
             if (useEnhance) {
                 log(`[${provider}] Enhancing prompt with AI...`);
-                finalPrompt = await enhancePrompt(provider, apiKey, prompt);
-                log(`✨ Enhanced Prompt: ${finalPrompt}`);
+                try {
+                    finalPrompt = await enhancePrompt(provider, apiKey, prompt);
+                    log(`✨ Enhanced Prompt: ${finalPrompt}`);
+                } catch (e) {
+                    log(`⚠️ Prompt enhancement failed: ${e.message}. Using original prompt.`);
+                    finalPrompt = prompt; // エラーなら元のプロンプトを使う
+                }
             }
 
             // 2. 画像生成フェーズ
@@ -251,8 +257,6 @@
             img.src = imageUrl;
             img.style.display = 'block';
             
-            // ダウンロードリンクの設定（CORS回避のためblob変換が必要な場合があるが、まずは簡易的に）
-            // URLが直接アクセス可能ならそのまま、そうでなければFetchしてBlob化
             try {
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
@@ -260,7 +264,6 @@
                 downloadLink.href = blobUrl;
                 downloadLink.style.display = 'inline-block';
             } catch (e) {
-                // Fetchできない場合（CORS等）は直リンク
                 downloadLink.href = imageUrl;
                 downloadLink.target = "_blank";
                 downloadLink.style.display = 'inline-block';
@@ -287,11 +290,11 @@
 
     // 1. プロンプト強化 (Text Generation)
     async function enhancePrompt(provider, apiKey, rawPrompt) {
-        const systemMsg = "You are an expert image prompt generator. Expand the user's input into a detailed, descriptive English prompt (max 3 sentences) for an AI image generator. Output ONLY the prompt.";
+        const systemMsg = "You are an expert image prompt generator. Expand the user's input into a detailed, descriptive English prompt (max 3 sentences). Output ONLY the prompt.";
         
         if (provider === 'openai' || provider === 'grok') {
             const baseUrl = provider === 'grok' ? 'https://api.x.ai/v1' : 'https://api.openai.com/v1';
-            const model = provider === 'grok' ? 'grok-2-latest' : 'gpt-4o'; // モデル名は適宜変更
+            const model = provider === 'grok' ? 'grok-2-latest' : 'gpt-4o'; 
 
             const res = await fetch(`${baseUrl}/chat/completions`, {
                 method: 'POST',
@@ -312,7 +315,10 @@
             return data.choices[0].message.content;
 
         } else if (provider === 'gemini') {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            // ★変更点: モデル名を gemini-1.5-flash-001 に変更し、失敗時は gemini-pro を試すロジックは複雑になるため
+            // まずは安全な -001 を指定します。
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`;
+            
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -321,7 +327,11 @@
                 })
             });
             const data = await res.json();
-            if (data.error) throw new Error(data.error.message);
+            
+            if (data.error) {
+                // エラー内容をそのままthrowして、呼び出し元のcatchブロックで処理させる
+                throw new Error(data.error.message);
+            }
             return data.candidates[0].content.parts[0].text;
         }
         return rawPrompt;
@@ -331,16 +341,14 @@
     async function generateImage(provider, apiKey, prompt) {
         if (provider === 'openai' || provider === 'grok') {
             const baseUrl = provider === 'grok' ? 'https://api.x.ai/v1' : 'https://api.openai.com/v1';
-            const model = provider === 'grok' ? 'grok-2-image-gen' : 'dall-e-3'; // モデル名は変更の可能性あり
+            const model = provider === 'grok' ? 'grok-2-image-gen' : 'dall-e-3'; 
 
-            // Grokの画像APIはOpenAI互換だが、response_format等の細かい仕様が異なる場合があるため注意
-            // 基本的なOpenAIスタイルでリクエスト
             const body = {
                 model: model,
                 prompt: prompt,
                 n: 1,
                 size: "1024x1024",
-                response_format: "url" // or "b64_json" if CORS is an issue
+                response_format: "url" 
             };
 
             const res = await fetch(`${baseUrl}/images/generations`, {
@@ -357,15 +365,10 @@
             return data.data[0].url;
 
         } else if (provider === 'gemini') {
-            // Google Imagen on AI Studio (REST API)
-            // 注意: Imagen 3 のパブリックREST APIは変更が激しいため、
-            // 以下のエンドポイントは執筆時点(2025年以前)のGemini Pro Vision等とは異なります。
-            // 現在、AI Studio API経由での画像生成は一般的に利用可能です。
-            
-            // Imagen 3 endpoint (例)
+            // Imagen 3 endpoint
+            // ★変更点: モデルIDを最新のものに明示的に指定
             const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
             
-            // 注意: GoogleのImage APIはリクエスト形式が特殊な場合があります
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -378,11 +381,9 @@
             const data = await res.json();
             if (data.error) throw new Error(data.error.message);
             
-            // GoogleはBase64を返すことが多い
             if (data.predictions && data.predictions[0].bytesBase64Encoded) {
                 return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
             } else if (data.predictions && data.predictions[0].mimeType) {
-                 // 新しい形式の場合の対応
                  return `data:${data.predictions[0].mimeType};base64,${data.predictions[0].bytesBase64Encoded}`;
             }
             throw new Error("Unexpected response format from Google Imagen");
