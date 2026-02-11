@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified AI Image Generator</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --accent-color: #4a90e2;
+            --accent-hover: #357abd;
+            --input-bg: #3d3d3d;
+            --border-color: #555;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        h1 { text-align: center; margin-bottom: 20px; font-size: 1.5rem; }
+        
+        /* 設定エリア */
+        .settings-box {
+            background-color: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+        }
+        .settings-header {
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .settings-content {
+            display: none;
+            margin-top: 15px;
+        }
+        .settings-content.open { display: block; }
+
+        .input-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #ccc; }
+        input[type="password"], input[type="text"], select, textarea {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: white;
+            box-sizing: border-box;
+        }
+
+        /* メイン操作エリア */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: var(--accent-hover); }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+
+        /* 結果表示エリア */
+        #status-log {
+            margin-top: 20px;
+            padding: 10px;
+            font-family: monospace;
+            background: #000;
+            color: #0f0;
+            border-radius: 4px;
+            min-height: 40px;
+            white-space: pre-wrap;
+            font-size: 0.85rem;
+        }
+
+        #result-area {
+            margin-top: 20px;
+            text-align: center;
+        }
+        img#generated-image {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Unified AI Image Generator</h1>
+
+    <div class="settings-box">
+        <div class="settings-header" onclick="toggleSettings()">
+            <span>⚙️ API Key Settings (Click to Open)</span>
+            <span>▼</span>
+        </div>
+        <div class="settings-content" id="settings-content">
+            <div class="input-group">
+                <label>OpenAI API Key (DALL-E 3)</label>
+                <input type="password" id="openai-key" placeholder="sk-...">
+            </div>
+            <div class="input-group">
+                <label>Google API Key (Gemini/Imagen)</label>
+                <input type="password" id="google-key" placeholder="AIza...">
+            </div>
+            <div class="input-group">
+                <label>xAI API Key (Grok)</label>
+                <input type="password" id="xai-key" placeholder="xai-...">
+            </div>
+            <button onclick="saveKeys()" style="background-color: #4caf50;">Save Keys locally</button>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div class="input-group">
+            <label>Provider</label>
+            <select id="provider-select">
+                <option value="openai">OpenAI (DALL-E 3)</option>
+                <option value="gemini">Google (Imagen 3)</option>
+                <option value="grok">xAI (Grok-2)</option>
+            </select>
+        </div>
+
+        <div class="input-group">
+            <label>Prompt</label>
+            <textarea id="prompt-input" rows="3" placeholder="Describe the image you want (e.g. A futuristic samurai robot)"></textarea>
+        </div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="enhance-toggle" checked>
+            <label for="enhance-toggle">Enhance Prompt with AI (LLM)</label>
+        </div>
+
+        <button id="generate-btn" onclick="startGeneration()">Generate Image</button>
+    </div>
+
+    <div id="status-log">Ready...</div>
+    <div id="result-area">
+        <img id="generated-image" alt="Generated Result">
+        <br><br>
+        <a id="download-link" href="#" download="generated_image.png" style="display:none; color: #4a90e2;">Download Image</a>
+    </div>
+</div>
+
+<script>
+    // --- 初期化とキー管理 ---
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('openai-key').value = localStorage.getItem('openai_key') || '';
+        document.getElementById('google-key').value = localStorage.getItem('google_key') || '';
+        document.getElementById('xai-key').value = localStorage.getItem('xai_key') || '';
+    });
+
+    function toggleSettings() {
+        document.getElementById('settings-content').classList.toggle('open');
+    }
+
+    function saveKeys() {
+        localStorage.setItem('openai_key', document.getElementById('openai-key').value);
+        localStorage.setItem('google_key', document.getElementById('google-key').value);
+        localStorage.setItem('xai_key', document.getElementById('xai-key').value);
+        log("API Keys saved to Local Storage.");
+        toggleSettings();
+    }
+
+    function log(msg) {
+        const logArea = document.getElementById('status-log');
+        logArea.textContent = msg;
+    }
+
+    // --- メイン処理 ---
+    async function startGeneration() {
+        const btn = document.getElementById('generate-btn');
+        const img = document.getElementById('generated-image');
+        const downloadLink = document.getElementById('download-link');
+        
+        btn.disabled = true;
+        img.style.display = 'none';
+        downloadLink.style.display = 'none';
+
+        const provider = document.getElementById('provider-select').value;
+        const prompt = document.getElementById('prompt-input').value;
+        const useEnhance = document.getElementById('enhance-toggle').checked;
+
+        if (!prompt) {
+            log("Error: Please enter a prompt.");
+            btn.disabled = false;
+            return;
+        }
+
+        const apiKey = getApiKey(provider);
+        if (!apiKey) {
+            log(`Error: API Key for ${provider} is missing. Please check settings.`);
+            btn.disabled = false;
+            return;
+        }
+
+        try {
+            let finalPrompt = prompt;
+
+            // 1. プロンプト強化フェーズ
+            if (useEnhance) {
+                log(`[${provider}] Enhancing prompt with AI...`);
+                finalPrompt = await enhancePrompt(provider, apiKey, prompt);
+                log(`✨ Enhanced Prompt: ${finalPrompt}`);
+            }
+
+            // 2. 画像生成フェーズ
+            log(`[${provider}] Generating image... (This may take a while)`);
+            const imageUrl = await generateImage(provider, apiKey, finalPrompt);
+
+            // 3. 表示
+            img.src = imageUrl;
+            img.style.display = 'block';
+            
+            // ダウンロードリンクの設定（CORS回避のためblob変換が必要な場合があるが、まずは簡易的に）
+            // URLが直接アクセス可能ならそのまま、そうでなければFetchしてBlob化
+            try {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                downloadLink.href = blobUrl;
+                downloadLink.style.display = 'inline-block';
+            } catch (e) {
+                // Fetchできない場合（CORS等）は直リンク
+                downloadLink.href = imageUrl;
+                downloadLink.target = "_blank";
+                downloadLink.style.display = 'inline-block';
+            }
+
+            log("Success! Image generated.");
+
+        } catch (error) {
+            log(`Error: ${error.message}`);
+            console.error(error);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function getApiKey(provider) {
+        if (provider === 'openai') return localStorage.getItem('openai_key');
+        if (provider === 'gemini') return localStorage.getItem('google_key');
+        if (provider === 'grok') return localStorage.getItem('xai_key');
+        return null;
+    }
+
+    // --- API呼び出しロジック ---
+
+    // 1. プロンプト強化 (Text Generation)
+    async function enhancePrompt(provider, apiKey, rawPrompt) {
+        const systemMsg = "You are an expert image prompt generator. Expand the user's input into a detailed, descriptive English prompt (max 3 sentences) for an AI image generator. Output ONLY the prompt.";
+        
+        if (provider === 'openai' || provider === 'grok') {
+            const baseUrl = provider === 'grok' ? 'https://api.x.ai/v1' : 'https://api.openai.com/v1';
+            const model = provider === 'grok' ? 'grok-2-latest' : 'gpt-4o'; // モデル名は適宜変更
+
+            const res = await fetch(`${baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        {role: "system", content: systemMsg},
+                        {role: "user", content: rawPrompt}
+                    ]
+                })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.choices[0].message.content;
+
+        } else if (provider === 'gemini') {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: `${systemMsg}\nUser Input: ${rawPrompt}` }] }]
+                })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.candidates[0].content.parts[0].text;
+        }
+        return rawPrompt;
+    }
+
+    // 2. 画像生成 (Image Generation)
+    async function generateImage(provider, apiKey, prompt) {
+        if (provider === 'openai' || provider === 'grok') {
+            const baseUrl = provider === 'grok' ? 'https://api.x.ai/v1' : 'https://api.openai.com/v1';
+            const model = provider === 'grok' ? 'grok-2-image-gen' : 'dall-e-3'; // モデル名は変更の可能性あり
+
+            // Grokの画像APIはOpenAI互換だが、response_format等の細かい仕様が異なる場合があるため注意
+            // 基本的なOpenAIスタイルでリクエスト
+            const body = {
+                model: model,
+                prompt: prompt,
+                n: 1,
+                size: "1024x1024",
+                response_format: "url" // or "b64_json" if CORS is an issue
+            };
+
+            const res = await fetch(`${baseUrl}/images/generations`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(body)
+            });
+
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.data[0].url;
+
+        } else if (provider === 'gemini') {
+            // Google Imagen on AI Studio (REST API)
+            // 注意: Imagen 3 のパブリックREST APIは変更が激しいため、
+            // 以下のエンドポイントは執筆時点(2025年以前)のGemini Pro Vision等とは異なります。
+            // 現在、AI Studio API経由での画像生成は一般的に利用可能です。
+            
+            // Imagen 3 endpoint (例)
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
+            
+            // 注意: GoogleのImage APIはリクエスト形式が特殊な場合があります
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instances: [{ prompt: prompt }],
+                    parameters: { sampleCount: 1, aspectRatio: "1:1" }
+                })
+            });
+
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            
+            // GoogleはBase64を返すことが多い
+            if (data.predictions && data.predictions[0].bytesBase64Encoded) {
+                return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+            } else if (data.predictions && data.predictions[0].mimeType) {
+                 // 新しい形式の場合の対応
+                 return `data:${data.predictions[0].mimeType};base64,${data.predictions[0].bytesBase64Encoded}`;
+            }
+            throw new Error("Unexpected response format from Google Imagen");
+        }
+    }
+</script>
+
+</body>
+</html>
