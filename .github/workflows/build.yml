@@ -64,10 +64,16 @@ jobs:
           kotlin.code.style=official
           EOF
 
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get install -y -qq imagemagick \
+            || (sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick)
+          which convert && convert -version | head -n 1
+
       - name: Generate launcher icons
         run: |
           cd "$PROJECT_DIR"
-          # ImageMagickで各密度のアイコンを生成（黒背景に白い円 = カメラ風）
+          # 各密度のアイコン生成（黒背景に白いリング = カメラレンズ風）
           for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
             density="${spec%:*}"
             size="${spec#*:}"

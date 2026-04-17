@@ -69,6 +69,11 @@ jobs:
           kotlin.code.style=official
           EOF
 
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get install -y -qq imagemagick \
+            || (sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick)
+
       - name: Generate launcher icons
         run: |
           cd "$PROJECT_DIR"
