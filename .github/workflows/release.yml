@@ -75,15 +75,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.4
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
       - name: Build debug APK
         run: |
           cd "$PROJECT_DIR"
-          gradle wrapper --gradle-version 8.4
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug --stacktrace
 
       - name: Rename APK with tag
         run: |
