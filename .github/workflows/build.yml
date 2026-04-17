@@ -64,6 +64,25 @@ jobs:
           kotlin.code.style=official
           EOF
 
+      - name: Generate launcher icons
+        run: |
+          cd "$PROJECT_DIR"
+          # ImageMagickで各密度のアイコンを生成（黒背景に白い円 = カメラ風）
+          for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            density="${spec%:*}"
+            size="${spec#*:}"
+            DIR="app/src/main/res/mipmap-$density"
+            mkdir -p "$DIR"
+            half=$((size/2))
+            outer=$((size*2/5))
+            inner=$((size/5))
+            convert -size ${size}x${size} xc:"#000000" \
+              -fill "#FFFFFF" -draw "circle $half,$half $((half+outer)),$half" \
+              -fill "#000000" -draw "circle $half,$half $((half+inner)),$half" \
+              "$DIR/ic_launcher.png"
+            echo "Generated: $DIR/ic_launcher.png ($size x $size)"
+          done
+
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
