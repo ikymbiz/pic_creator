@@ -10,18 +10,21 @@ import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.RelativeLayout
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.*
 import androidx.camera.video.VideoCapture
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.MasterKey
 import androidx.work.*
-import kotlinx.android.synthetic.main.activity_main.*
+// import kotlinx.android.synthetic.main.activity_main.* <-- これを削除！
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -32,9 +35,23 @@ class MainActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
     private val masterKey by lazy { MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build() }
 
+    // UI部品を変数として宣言
+    private lateinit var viewFinder: PreviewView
+    private lateinit var standbyLayer: RelativeLayout
+    private lateinit var primaryBar: View
+    private lateinit var rootContainer: FrameLayout
+    private lateinit var removalSlider: SeekBar
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // findViewById でレイアウトと紐付け
+        viewFinder = findViewById(R.id.viewFinder)
+        standbyLayer = findViewById(R.id.standbyLayer)
+        primaryBar = findViewById(R.id.primaryBar)
+        rootContainer = findViewById(R.id.rootContainer)
+        removalSlider = findViewById(R.id.removalSlider)
 
         updateInteractionTime()
         scheduleMaintenance()
